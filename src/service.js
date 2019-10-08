@@ -172,7 +172,7 @@ class DriveService {
     }
 
     async copyFile(file, parentFolderId, filesProvider) {
-        if (typeof file === 'object') throw new Error(`DriveService.copyFile(): Parameter "file" must be of type object, provided value was "${file}"`);
+        if (typeof file !== 'object') throw new Error(`DriveService.copyFile(): Parameter "file" must be of type object, provided value was "${file}"`);
         const name = filesProvider.getFileName(file.key);
         console.log(`Copying file ${name}...`);
 
