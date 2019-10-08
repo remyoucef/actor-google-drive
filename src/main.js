@@ -7,9 +7,9 @@ Apify.main(async () => {
     console.log('Input:');
     console.dir(input);
 
-    const operations = parseInput(input);
+    const { isSetupMode, operations } = parseInput(input);
 
     const driveService = new DriveService();
     await driveService.init();
-    await driveService.execute(operations);
+    if (!isSetupMode) await driveService.execute(operations);
 });

@@ -14,8 +14,19 @@ The input of the actor is JSON with the following parameters.
 | ----- | ---- | ----------- |
 | operations | Array | The operations to execute |
 | operations[*] | Object |  Operations options, mainly it contains the **type** and other specific options (check the next section)  |
+| isSetupMode | Boolean |  If **true** operations will not get executed  |
 
+### Setup
 
+Before you start using the actor for running operations, you will need to run it with the setup mode. To achieve that you just need to run it with the following input and follow the steps in the run log or you can check this [article](https://kb.apify.com/integration/google-integration) for authorization. 
+
+```json
+{
+  "isSetupMode": true
+}
+```
+
+ 
 ### Operations
 
 Operations are the main parameter for the input, they passed as objects and distinguished by **type** option. Option **type** can have one the following values: **files-copy**, and **folders-delete**. For each operation type there is specific options, those options are explained bellow for each type:
