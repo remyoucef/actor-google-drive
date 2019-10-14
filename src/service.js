@@ -80,6 +80,8 @@ class DriveService {
         } = settings;
         const mimeType = 'application/vnd.google-apps.folder';
 
+        console.log('Getting all folders...');
+
         const q = this.buildQuery({
             mimeType,
             root,
@@ -96,7 +98,7 @@ class DriveService {
             },
         );
         Array.prototype.push.apply(folderList, data.files);
-        return data.nextPageToken
+        const allFolders = data.nextPageToken
             ? this.listAllFolders({
                 extraQ,
                 pageSize,
@@ -108,6 +110,11 @@ class DriveService {
                 folderList,
             })
             : folderList;
+
+        if (folderList.length === data.files.length) {
+            console.log(`We found ${allFolders.length} folders.`);
+        }
+        return allFolders;
     }
 
     /**
@@ -123,6 +130,9 @@ class DriveService {
             trashed = false,
             folderList = [],
         } = settings;
+
+        console.log('Getting root folders...');
+
         const mimeType = 'application/vnd.google-apps.folder';
 
         const q = this.buildQuery({
@@ -140,7 +150,7 @@ class DriveService {
             },
         );
         Array.prototype.push.apply(folderList, data.files);
-        return data.nextPageToken
+        const rootFolders = data.nextPageToken
             ? this.listAllFolders({
                 extraQ,
                 pageSize,
@@ -151,6 +161,10 @@ class DriveService {
                 folderList,
             })
             : folderList;
+        if (folderList.length === data.files.length) {
+            console.log(`We found ${rootFolders.length} root folders.`);
+        }
+        return rootFolders;
     }
 
     buildQuery({ mimeType, root, trashed, extraQ }) {
