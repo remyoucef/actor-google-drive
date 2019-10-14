@@ -3,11 +3,19 @@ const { OPERATIONS_TYPES, CopyFilesOperation, DeleteFolderOperation } = require(
 const parseInput = (input) => {
     console.log('Parsing input...');
 
+    const defaults = {
+        isSetupMode: false,
+        timeoutSecs: 5 * 60,
+    };
     const ERROR_LABEL = '[PARSE_INPUT__ERROR]';
     if (!input) {
         throw new Error(`${ERROR_LABEL} Input must be a JSON object`);
     }
-    const isSetupMode = input.isSetupMode || false;
+    const isSetupMode = input.isSetupMode || defaults.isSetupMode;
+    const timeoutSecs = input.timeoutSecs
+        ? Number(input.timeoutSecs)
+        : defaults.timeoutSecs;
+
     const parsedOperations = [];
     if (!input.isSetupMode) {
         if (!input.operations) {
@@ -35,7 +43,7 @@ const parseInput = (input) => {
 
         console.log(`Input parsed, we found ${parsedOperations.length} operations`);
     }
-    return { isSetupMode, operations: parsedOperations };
+    return { isSetupMode, operations: parsedOperations, timeoutSecs };
 };
 
 module.exports = parseInput;

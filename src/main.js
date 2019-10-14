@@ -7,9 +7,14 @@ Apify.main(async () => {
     console.log('Input:');
     console.dir(input);
 
-    const { isSetupMode, operations } = parseInput(input);
+    const { isSetupMode, operations, timeoutSecs } = parseInput(input);
 
     const driveService = new DriveService();
     await driveService.init();
-    if (!isSetupMode) await driveService.execute(operations);
+    if (!isSetupMode) {
+        await Promise.race([
+            driveService.execute(operations),
+            new Promise(resolve => setTimeout(resolve, timeoutSecs * 1000)),
+        ]);
+    }
 });
