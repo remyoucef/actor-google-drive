@@ -19,7 +19,7 @@ Apify.main(async () => {
     const driveService = new DriveService();
     await driveService.init();
     if (!isSetupMode) {
-        await Promise.all([
+        await Promise.race([
             driveService.execute(operations),
             throwIfTimeout(timeoutSecs),
         ]);
