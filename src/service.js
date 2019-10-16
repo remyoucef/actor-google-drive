@@ -39,35 +39,11 @@ class DriveService {
     /**
      * Lists folders.
      */
-    listFolders(settings) {
-        const {
-            extraQ,
-            pageSize = 10,
-            fields = 'nextPageToken, files(id, name)',
-            root = true,
-            trashed = true,
-        } = settings;
-        const mimeType = 'application/vnd.google-apps.folder';
-
-        const q = this.buildQuery({
-            mimeType,
-            root,
-            trashed,
-            extraQ,
-        });
-        return this._drive.files.list(
-            {
-                q,
-                pageSize,
-                fields,
-            },
-        );
-    }
-
-    /**
-     * Lists all folders.
-     */
-    async listAllFolders(settings = {}) {
+    async listFolders(settings = {}) {
+        const defaults = {
+            preListLogMsgFunction: ({ page, enableLog = false }) => enableLog && console.log(`Getting folders (page ${page})...`),
+            afterListLogMsgFunction: ({ folders, enableLog = false }) => enableLog && console.log(`We found ${folders.length} folders`),
+        };
         const {
             extraQ,
             pageSize = 1000,
@@ -76,12 +52,15 @@ class DriveService {
             root = false,
             trashed = false,
             spaces = 'drive',
+            enableLog = false,
             folderList = [],
             page = 1,
+            preListLogMsgFunction = defaults.preListLogMsgFunction,
+            afterListLogMsgFunction = defaults.afterListLogMsgFunction,
         } = settings;
         const mimeType = 'application/vnd.google-apps.folder';
 
-        console.log(`Getting all folders (page ${page})...`);
+        preListLogMsgFunction({ page, enableLog });
 
         const q = this.buildQuery({
             mimeType,
@@ -99,8 +78,8 @@ class DriveService {
             },
         );
         Array.prototype.push.apply(folderList, data.files);
-        const allFolders = data.nextPageToken
-            ? await this.listAllFolders({
+        const folders = data.nextPageToken
+            ? await this.listFolders({
                 extraQ,
                 pageSize,
                 token,
@@ -114,9 +93,9 @@ class DriveService {
             : folderList;
 
         if (folderList.length === data.files.length) {
-            console.log(`We found ${allFolders.length} folders.`);
+            afterListLogMsgFunction({ folders, enableLog });
         }
-        return allFolders;
+        return folders;
     }
 
     /**
@@ -130,42 +109,19 @@ class DriveService {
             fields = 'nextPageToken, files(id, name, parents)',
             root = true,
             trashed = false,
-            folderList = [],
         } = settings;
 
         console.log('Getting root folders...');
 
-        const mimeType = 'application/vnd.google-apps.folder';
-
-        const q = this.buildQuery({
-            mimeType,
+        const rootFolders = await this.listFolders({
+            extraQ,
+            pageSize,
+            token,
+            fields,
             root,
             trashed,
-            extraQ,
         });
-        const { data } = await this._drive.files.list(
-            {
-                q,
-                pageToken: token,
-                pageSize,
-                fields,
-            },
-        );
-        Array.prototype.push.apply(folderList, data.files);
-        const rootFolders = data.nextPageToken
-            ? this.listAllFolders({
-                extraQ,
-                pageSize,
-                token,
-                fields,
-                root,
-                trashed,
-                folderList,
-            })
-            : folderList;
-        if (folderList.length === data.files.length) {
-            console.log(`We found ${rootFolders.length} root folders.`);
-        }
+        console.log(`We found ${rootFolders.length} root folders.`);
         return rootFolders;
     }
 
@@ -231,29 +187,29 @@ class DriveService {
 
         const result = { folderId: null };
 
-        const rootFolders = await this.listRootFolders();
-        const allFolders = await this.listAllFolders();
         const foldersNames = folderPath.split('/').map(str => str.trim());
-        let parentFolderId = 'root';
+        const parentFolder = { id: 'root', name: foldersNames[0] };
+        const rootFolders = await this.listRootFolders({
+            extraQ: `name = '${parentFolder.name}'`,
+        });
         for (const folderName of foldersNames) {
-            const settings = {
-                resource: {
-                    name: folderName,
-                    mimeType: 'application/vnd.google-apps.folder',
-                } };
             let folder;
-            if (parentFolderId === 'root') {
-                folder = rootFolders.find(f => f.name === folderName);
+            if (parentFolder.id === 'root') {
+                folder = rootFolders.find(f => f.name === parentFolder.name);
             } else {
-                folder = allFolders.find(f => f.name === folderName && f.parents[0] === parentFolderId);
-                settings.resource.parents = [parentFolderId];
+                const searchFolders = await this.listFolders({
+                    extraQ: `name = '${folderName}'`,
+                });
+
+                folder = searchFolders.find(f => f.name === folderName && f.parents[0] === parentFolder.id);
             }
             if (!folder) {
                 result.folderId = null;
                 break;
             }
-            parentFolderId = folder.id;
-            result.folderId = parentFolderId;
+            parentFolder.id = folder.id;
+            parentFolder.name = folder.name;
+            result.folderId = parentFolder.id;
         }
         return result;
     }
@@ -275,7 +231,6 @@ class DriveService {
 
         if (folderPath.indexOf('/') === 0) throw new Error(`DriveService.createFolder(): Folder path shouldn't start with "/" character! provided value was ${folderPath}`);
         const rootFolders = await this.listRootFolders();
-        const allFolders = await this.listAllFolders();
         const foldersNames = folderPath.split('/').map(str => str.trim());
         let parentFolderId = 'root';
         for (const folderName of foldersNames) {
@@ -288,7 +243,7 @@ class DriveService {
             if (parentFolderId === 'root') {
                 folder = rootFolders.find(f => f.name === folderName);
             } else {
-                folder = allFolders.find(f => f.name === folderName && f.parents[0] === parentFolderId);
+                // folder = allFolders.find(f => f.name === folderName && f.parents[0] === parentFolderId);
                 settings.resource.parents = [parentFolderId];
             }
             if (!folder) {
