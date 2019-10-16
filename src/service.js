@@ -99,7 +99,7 @@ class DriveService {
         );
         Array.prototype.push.apply(folderList, data.files);
         const allFolders = data.nextPageToken
-            ? this.listAllFolders({
+            ? await this.listAllFolders({
                 extraQ,
                 pageSize,
                 token,
