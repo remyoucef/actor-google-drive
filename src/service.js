@@ -77,10 +77,11 @@ class DriveService {
             trashed = false,
             spaces = 'drive',
             folderList = [],
+            page = 1,
         } = settings;
         const mimeType = 'application/vnd.google-apps.folder';
 
-        console.log('Getting all folders...');
+        console.log(`Getting all folders (page ${page})...`);
 
         const q = this.buildQuery({
             mimeType,
@@ -108,6 +109,7 @@ class DriveService {
                 trashed,
                 spaces,
                 folderList,
+                page: page + 1,
             })
             : folderList;
 
