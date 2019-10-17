@@ -1,6 +1,7 @@
 const Apify = require('apify');
 
-const { bufferToStream } = require('./utils');
+const { bufferToStream } = require('../utils');
+const { Folder } = require('../operations/helper');
 
 const OPERATIONS_TYPES = {
     FILES_COPY: 'files-copy',
@@ -41,9 +42,9 @@ class KeyValueStoreFilesProvider {
 }
 
 class CopyFilesOperation {
-    constructor(source, destination) {
-        if (!destination || typeof destination !== 'string' || destination === '') throw new Error(`CopyFilesOperation: Parameter "destination" must be of type string and not empty, provided value was ${destination}`);
-        // TODO: Validate source
+    constructor({ source, destination }) {
+        // TODO: Validate parameters
+        if (!destination || !(destination instanceof Folder)) throw new Error('Parameter "destination" must be of type Folder');
 
         this.source = source;
         this.destination = destination;
@@ -77,10 +78,11 @@ class CopyFilesOperation {
 }
 
 class DeleteFolderOperation {
-    constructor(folder) {
-        if (!folder || typeof folder !== 'string' || folder === '') throw new Error(`DeleteFolderOperation: Parameter "folder" must be of type string and not empty, provided value was ${folder}`);
+    constructor({ folder }) {
+        if (!folder || !(folder instanceof Folder)) throw new Error('DeleteFolderOperation: Parameter "folder" must be of type Folder');
 
         this.folder = folder;
+
         // TODO: Validate parameters
     }
 
