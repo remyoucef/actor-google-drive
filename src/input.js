@@ -1,4 +1,5 @@
-const { OPERATIONS_TYPES, CopyFilesOperation, DeleteFolderOperation } = require('./operations');
+const { OPERATIONS_TYPES, CopyFilesOperation, DeleteFolderOperation } = require('./operations/index');
+const { Folder } = require('./operations/helper');
 
 const parseInput = (input) => {
     console.log('Parsing input...');
@@ -35,19 +36,19 @@ const parseInput = (input) => {
             // eslint-disable-next-line default-case
             switch (type) {
                 case OPERATIONS_TYPES.FILES_COPY: {
-                    const { source, destination } = operation;
-                    parsedOperations.push(new CopyFilesOperation(source, destination));
+                    const { source, destination: inputDestination } = operation;
+                    const destination = Folder.make({ folder: inputDestination, constants });
+                    parsedOperations.push(new CopyFilesOperation({ source, destination }));
                     break;
                 }
                 case OPERATIONS_TYPES.FOLDERS_DELETE: {
-                    const { folder } = operation;
-                    parsedOperations.push(new DeleteFolderOperation(folder));
+                    const { folder: inputFolder } = operation;
+                    const folder = Folder.make({ folder: inputFolder, constants });
+                    parsedOperations.push(new DeleteFolderOperation({ folder }));
                     break;
                 }
             }
         }
-
-        console.log(`Input parsed, we found ${parsedOperations.length} operations`);
     }
     return { isSetupMode, constants, operations: parsedOperations, timeoutSecs };
 };
