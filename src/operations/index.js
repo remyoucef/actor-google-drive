@@ -48,7 +48,6 @@ class CopyFilesOperation {
 
         this.source = source;
         this.destination = destination;
-        // TODO: Validate parameters
     }
 
     filesProvider() {
@@ -91,8 +90,7 @@ class DeleteFolderOperation {
         const { folderId } = await driveService.getFolderInfo(this.folder);
         if (!folderId) console.log('Couldn\'t delete folder because it doesn\'t exist');
         else {
-            const res = await driveService.deleteFolder(folderId);
-            if (res.code === 404 && res.message.includes('File not found')) console.log(`Couldn't delete folder with id "${folderId}" because it doesn't exist`);
+            await driveService.deleteFolder(folderId);
         }
     }
 }

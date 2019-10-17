@@ -3,6 +3,9 @@ const { apifyGoogleAuth } = require('apify-google-auth');
 const { google } = require('googleapis');
 const { CopyFilesOperation, DeleteFolderOperation } = require('./operations');
 
+const DRIVE_ERROR_MESSAGES = {
+    insufficientPermissions: 'The user does not have sufficient permissions for this file',
+};
 class DriveService {
     async init(settings = {}) {
         console.log('Initializing drive service...');
@@ -215,13 +218,22 @@ class DriveService {
     }
 
     async deleteFolder(folderId) {
-        if (!folderId) throw new Error('DriveService.deleteFolder(): Folder ID is not defined!');
+        if (!folderId) throw new Error('Parameter "folderId" is not defined!');
 
         console.log(`Deleting folder with id ${folderId}...`);
 
-        const result = this._drive.files.delete({
-            fileId: folderId,
-        });
+        try {
+            const result = await this._drive.files.delete({
+                fileId: folderId,
+            });
+            if (result.code === 404 && result.message.includes('File not found')) console.log(`Couldn't delete folder with id "${folderId}" because it doesn't exist`);
+        } catch (e) {
+            if (e.message.includes(DRIVE_ERROR_MESSAGES.insufficientPermissions)) {
+                throw new Error(`${DRIVE_ERROR_MESSAGES.insufficientPermissions} (id="${folderId}")`);
+            }
+            throw e;
+        }
+    }
 
         return result;
     }
