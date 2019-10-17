@@ -1,7 +1,7 @@
-const Apify = require('apify');
 const { apifyGoogleAuth } = require('apify-google-auth');
 const { google } = require('googleapis');
-const { CopyFilesOperation, DeleteFolderOperation } = require('./operations');
+const { CopyFilesOperation, DeleteFolderOperation } = require('./operations/index');
+const { Folder } = require('./operations/helper');
 
 const DRIVE_ERROR_MESSAGES = {
     insufficientPermissions: 'The user does not have sufficient permissions for this file',
@@ -110,7 +110,6 @@ class DriveService {
             pageSize = 1000,
             token = '',
             fields = 'nextPageToken, files(id, name, parents)',
-            root = true,
             trashed = false,
         } = settings;
 
@@ -121,7 +120,7 @@ class DriveService {
             pageSize,
             token,
             fields,
-            root,
+            root: true,
             trashed,
         });
         console.log(`We found ${rootFolders.length} root folders.`);
@@ -183,36 +182,45 @@ class DriveService {
         }
     }
 
-    async getFolderInfo(folderPath) {
-        console.log(`Getting folder info ${folderPath}...`);
+    /**
+     *
+     * @param folder<Folder>
+     * @return {Promise<{folderId: null}>}
+     */
+    async getFolderInfo(folder) {
+        console.log(`Getting folder info ${folder}...`);
 
-        if (folderPath.indexOf('/') === 0) throw new Error(`DriveService.getFolderInfo(): Folder path shouldn't start with "/" character! provided value was ${folderPath}`);
+        this.checkFolderOrThrow(folder);
 
         const result = { folderId: null };
 
-        const foldersNames = folderPath.split('/').map(str => str.trim());
-        const parentFolder = { id: 'root', name: foldersNames[0] };
-        const rootFolders = await this.listRootFolders({
-            extraQ: `name = '${parentFolder.name}'`,
-        });
-        for (const folderName of foldersNames) {
-            let folder;
-            if (parentFolder.id === 'root') {
-                folder = rootFolders.find(f => f.name === parentFolder.name);
+        const folders = folder.getFolders();
+
+        let currentFolder;
+
+        for (const folderEl of folders) {
+            let searchedFolder;
+            if (folderEl.root) {
+                const searchFolders = await this.listFolders({
+                    extraQ: `name='${folderEl.name}'`,
+                });
+                searchedFolder = searchFolders.find((f) => {
+                    if (folderEl.id) return f.id === folderEl.id;
+                    return f.name === folderEl.name;
+                });
             } else {
                 const searchFolders = await this.listFolders({
-                    extraQ: `name = '${folderName}'`,
-                });
+                    extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents` });
 
-                folder = searchFolders.find(f => f.name === folderName && f.parents[0] === parentFolder.id);
+
+                searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
             }
-            if (!folder) {
+            if (!searchedFolder) {
                 result.folderId = null;
                 break;
             }
-            parentFolder.id = folder.id;
-            parentFolder.name = folder.name;
-            result.folderId = parentFolder.id;
+            currentFolder = searchedFolder;
+            result.folderId = currentFolder.id;
         }
         return result;
     }
@@ -235,40 +243,60 @@ class DriveService {
         }
     }
 
+    /**
+     *
+     * @param folder<Folder>
+     * @return {Promise<{folderId: *}>}
+     */
+    async createFolder(folder) {
+        this.checkFolderOrThrow(folder);
+
+        console.log(`Creating folder ${folder}...`);
+
+        const result = { folderId: null };
+
+        const folders = folder.getFolders();
+
+        let currentFolder;
+
+        for (const folderEl of folders) {
+            const settings = {
+                resource: {
+                    name: folderEl.name,
+                    mimeType: 'application/vnd.google-apps.folder',
+                } };
+            let searchedFolder;
+            if (folderEl.root) {
+                const searchFolders = await this.listFolders({
+                    extraQ: `name='${folderEl.name}'`,
+                });
+                searchedFolder = searchFolders.find((f) => {
+                    if (folderEl.id) return f.id === folderEl.id;
+                    return f.name === folderEl.name;
+                });
+            } else {
+                const searchFolders = await this.listFolders({
+                    extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents` });
+
+                searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
+            }
+            if (!searchedFolder) {
+                settings.resource.parents = [currentFolder.id];
+                ({ data: currentFolder } = await this.createFile(settings));
+            } else {
+                currentFolder = searchedFolder;
+            }
+
+            result.folderId = currentFolder.id;
+        }
+
+        console.log(`Folder created: folder="${folder}"\nid="${result.folderId}"`);
+
         return result;
     }
 
-    async createFolder(folderPath) {
-        console.log(`Creating folder ${folderPath}...`);
-
-        if (folderPath.indexOf('/') === 0) throw new Error(`DriveService.createFolder(): Folder path shouldn't start with "/" character! provided value was ${folderPath}`);
-        const rootFolders = await this.listRootFolders();
-        const foldersNames = folderPath.split('/').map(str => str.trim());
-        let parentFolderId = 'root';
-        for (const folderName of foldersNames) {
-            const settings = {
-                resource: {
-                    name: folderName,
-                    mimeType: 'application/vnd.google-apps.folder',
-                } };
-            let folder;
-            if (parentFolderId === 'root') {
-                folder = rootFolders.find(f => f.name === folderName);
-            } else {
-                // folder = allFolders.find(f => f.name === folderName && f.parents[0] === parentFolderId);
-                settings.resource.parents = [parentFolderId];
-            }
-            if (!folder) {
-                ({ data: folder } = await this.createFile(settings));
-            }
-            parentFolderId = folder.id;
-        }
-
-        const result = { folderId: parentFolderId };
-
-        console.log(`Folder created ${folderPath} with id "${result.folderId}"`);
-
-        return result;
+    checkFolderOrThrow(folder) {
+        if (!folder || !(folder instanceof Folder)) throw new Error(`Parameter "folder" must be an instance of Folder! provided value was ${JSON.stringify(folder)}`);
     }
 }
 
