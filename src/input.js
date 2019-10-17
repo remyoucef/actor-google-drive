@@ -17,7 +17,13 @@ const parseInput = (input) => {
         : defaults.timeoutSecs;
 
     const parsedOperations = [];
+    let constants = {};
     if (!input.isSetupMode) {
+        // TODO: Validate constants and parse them
+        if (typeof input.constants === 'object') {
+            constants = input.constants;
+        }
+
         if (!input.operations) {
             throw new Error(`${ERROR_LABEL} Input must have the "operations" field!`);
         }
@@ -43,7 +49,7 @@ const parseInput = (input) => {
 
         console.log(`Input parsed, we found ${parsedOperations.length} operations`);
     }
-    return { isSetupMode, operations: parsedOperations, timeoutSecs };
+    return { isSetupMode, constants, operations: parsedOperations, timeoutSecs };
 };
 
 module.exports = parseInput;
