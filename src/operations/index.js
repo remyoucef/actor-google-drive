@@ -70,9 +70,10 @@ class CopyFilesOperation {
 
         const { folderId } = await driveService.createFolder(this.destination);
         const filesProvider = await this.filesProvider();
-        await Promise.all(filesProvider.files.map(
-            file => driveService.copyFile(file, folderId, filesProvider),
-        ));
+
+        for (const file of filesProvider.files) {
+            await driveService.copyFile(file, folderId, filesProvider);
+        }
     }
 }
 
