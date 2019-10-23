@@ -12,9 +12,9 @@ class Folder {
         if (!typeCheck('Object', params)) {
             throw new Error(`Folder: Parameter "params" must be of type string or object, provided value was ${JSON.stringify(params)}`);
         }
-        if (!typeCheck('String', params.parentFolderId)
-            || !typeCheck('String', params.parentFolderName)) {
-            throw new Error('Folder: Parameter "params" must have at least one this fields: "parentFolderId", "parentFolderName".');
+        // eslint-disable-next-line no-bitwise
+        if (!(typeCheck('String', params.parentFolderId) | typeCheck('String', params.parentFolderName))) {
+            throw new Error('Folder: Parameter "params" must have at least one of this fields: "parentFolderId", "parentFolderName".');
         }
         if (params.relativePath && !typeCheck('Maybe String', params.relativePath)) {
             throw new Error('Folder: Parameter "params" must have the field "relativePath" as "String".');
