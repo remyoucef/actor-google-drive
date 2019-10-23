@@ -281,7 +281,7 @@ class DriveService {
                 searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
             }
             if (!searchedFolder) {
-                settings.resource.parents = [currentFolder.id];
+                if (currentFolder) settings.resource.parents = [currentFolder.id];
                 ({ data: currentFolder } = await this.createFile(settings));
             } else {
                 currentFolder = searchedFolder;
