@@ -65,6 +65,11 @@ class CopyFilesOperation {
         return this._filesProvider;
     }
 
+    /**
+     *
+     * @param {DriveService} driveService
+     * @return {Promise<void>}
+     */
     async execute(driveService) {
         console.log(`Copying files to ${this.destination}...`);
 
@@ -72,7 +77,7 @@ class CopyFilesOperation {
         const filesProvider = await this.filesProvider();
 
         for (const file of filesProvider.files) {
-            await driveService.copyFile(file, folderId, filesProvider);
+            const copiedFile = await driveService.copyFile(file, folderId, filesProvider);
         }
     }
 }
