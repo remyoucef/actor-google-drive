@@ -382,6 +382,7 @@ class DriveService {
             let searchedFolder;
             if (folderEl.root) {
                 const searchFolders = await this.listFolders({
+                    root: !folderEl.id,
                     extraQ: `name='${folderEl.name}'`,
                 });
                 searchedFolder = searchFolders.find((f) => {
