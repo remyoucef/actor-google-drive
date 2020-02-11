@@ -1,48 +1,145 @@
 const { apifyGoogleAuth } = require('apify-google-auth');
 const { google } = require('googleapis');
+const { OPERATIONS_TYPES } = require('./consts');
 const { CopyFilesOperation, DeleteFolderOperation } = require('./operations/index');
 const { Folder } = require('./operations/helper');
 
 const DRIVE_ERROR_MESSAGES = {
     insufficientPermissions: 'The user does not have sufficient permissions for this file',
 };
-class DriveService {
-    async init(settings = {}) {
+class Service {
+    /**
+     * @param {Config} config
+     */
+    constructor(config) {
+        this.config = config;
+    }
+
+    async init() {
         console.log('Initializing drive service...');
 
-        const { tokensStore = 'google-auth-tokens' } = settings;
-        /**
-         * auth An authorized OAuth2 client.
-         * @type {google.auth.OAuth2}
-         * @private
-         */
+        const { tokensStore, googleApisCredentials } = this.config;
+
         this._auth = await apifyGoogleAuth({
             scope: 'drive',
             tokensStore,
+            credentials: googleApisCredentials,
         });
+        /**
+         * drive api endpoint.
+         * @type {v3.Drive}
+         * @private
+         */
         this._drive = google.drive({ version: 'v3', auth: this._auth });
     }
 
+
     /**
-     * Lists the names and IDs of files.
+     * Lists files.
      */
-    listFiles(settings) {
+    async listFiles(params = {}) {
+        const defaults = {
+            preListLogMsgFunction: ({ page, enableLog = false }) => enableLog && console.log(`Getting files (page ${page})...`),
+            afterListLogMsgFunction: ({ files, enableLog = false }) => enableLog && console.log(`We found ${files.length} files`),
+        };
         const {
-            pageSize = 10,
-            fields = 'nextPageToken, files(id, name)',
-        } = settings;
-        return this._drive.files.list(
+            extraQ,
+            pageSize = 1000,
+            token = '',
+            fields = 'nextPageToken, files(*)',
+            root = false,
+            trashed = false,
+            spaces = 'drive',
+            enableLog = false,
+            filesList = [],
+            page = 1,
+            preListLogMsgFunction = defaults.preListLogMsgFunction,
+            afterListLogMsgFunction = defaults.afterListLogMsgFunction,
+        } = params;
+
+        preListLogMsgFunction({ page, enableLog });
+
+        const q = this.buildQuery({
+            root,
+            trashed,
+            extraQ,
+        });
+        const { data } = await this._drive.files.list(
             {
+                q,
+                spaces,
+                pageToken: token,
                 pageSize,
                 fields,
             },
         );
+        Array.prototype.push.apply(filesList, data.files);
+        const files = data.nextPageToken
+            ? await this.listFiles({
+                extraQ,
+                pageSize,
+                token,
+                fields,
+                root,
+                trashed,
+                spaces,
+                filesList,
+                page: page + 1,
+            })
+            : filesList;
+
+        if (filesList.length === data.files.length) {
+            afterListLogMsgFunction({ files, enableLog });
+        }
+        return files;
+    }
+
+    createFile(params) {
+        const {
+            resource,
+            media,
+            fields = '*',
+        } = params;
+
+        return this._drive.files.create({
+            resource,
+            media,
+            fields,
+        });
+    }
+
+    updateFile(params) {
+        const {
+            fileId,
+            media,
+            fields = '*',
+        } = params;
+
+        return this._drive.files.update({
+            fileId,
+            media,
+            fields,
+        });
+    }
+
+    /**
+     * Lists files without folders.
+     */
+    async listFilesWithoutFolders(params = {}) {
+        let { extraQ = '' } = params;
+        if (extraQ === '') extraQ = 'mimeType != \'application/vnd.google-apps.folder\'';
+
+        if (!extraQ.includes('mimeType')) extraQ += ' and mimeType != \'application/vnd.google-apps.folder\'';
+        return this.listFiles({
+            ...params,
+            extraQ,
+        });
     }
 
     /**
      * Lists folders.
      */
-    async listFolders(settings = {}) {
+    async listFolders(params = {}) {
         const defaults = {
             preListLogMsgFunction: ({ page, enableLog = false }) => enableLog && console.log(`Getting folders (page ${page})...`),
             afterListLogMsgFunction: ({ folders, enableLog = false }) => enableLog && console.log(`We found ${folders.length} folders`),
@@ -60,7 +157,7 @@ class DriveService {
             page = 1,
             preListLogMsgFunction = defaults.preListLogMsgFunction,
             afterListLogMsgFunction = defaults.afterListLogMsgFunction,
-        } = settings;
+        } = params;
         const mimeType = 'application/vnd.google-apps.folder';
 
         preListLogMsgFunction({ page, enableLog });
@@ -104,14 +201,14 @@ class DriveService {
     /**
      * Lists root folders.
      */
-    async listRootFolders(settings = {}) {
+    async listRootFolders(params = {}) {
         const {
             extraQ,
             pageSize = 1000,
             token = '',
             fields = 'nextPageToken, files(id, name, parents)',
             trashed = false,
-        } = settings;
+        } = params;
 
         console.log('Getting root folders...');
 
@@ -128,29 +225,46 @@ class DriveService {
     }
 
     buildQuery({ mimeType, root, trashed, extraQ }) {
-        return `mimeType='${mimeType}' ${root ? 'and \'root\' in parents ' : ''} and trashed=${trashed} ${extraQ ? `and ${extraQ}` : ''}`;
+        const qArr = [];
+        if (mimeType) qArr.push(`mimeType='${mimeType}'`);
+        if (root) qArr.push('\'root\' in parents');
+        if (typeof trashed === 'boolean') qArr.push(`trashed=${trashed}`);
+        if (extraQ) qArr.push(`${extraQ}`);
+        return qArr.join(' and ');
     }
 
-    createFile(settings) {
-        const {
-            resource,
-            media,
-            fields = 'id',
-        } = settings;
+    async createOrUpdateFile(params) {
+        const searchFiles = await this.getFileData({ ...params });
 
-        return this._drive.files.create({
-            resource,
-            media,
-            fields,
+        if (searchFiles.length > 0) return this.updateFile({ fileId: searchFiles[0].id, ...params });
+
+        return this.createFile(params);
+    }
+
+    async getFileData(params) {
+        const {
+            resource: { name, parents },
+        } = params;
+
+        let extraQ = `name = '${name}'`;
+        if (parents && parents.length > 0) {
+            extraQ += ` and (${parents.map(p => `'${p}' in parents`)
+                .join(' or ')})`;
+        }
+        return this.listFilesWithoutFolders({
+            ...params,
+            extraQ,
         });
     }
 
     async copyFile(file, parentFolderId, filesProvider) {
-        if (typeof file !== 'object') throw new Error(`DriveService.copyFile(): Parameter "file" must be of type object, provided value was "${file}"`);
+        if (typeof file !== 'object') {
+            throw new Error(`DriveService.copyFile(): Parameter "file" must be of type object, provided value was "${file}"`);
+        }
         const name = filesProvider.getFileName(file.key);
         console.log(`Copying file ${name}...`);
 
-        const settings = {
+        const params = {
             resource: {
                 ...file.options.resource,
                 name,
@@ -161,24 +275,34 @@ class DriveService {
                 body: await filesProvider.getFileStream(file.key),
             },
         };
-        await this.createFile(settings);
+        return this.createOrUpdateFile(params);
     }
 
-    async execute(operations) {
+    async execute() {
         console.log('Executing operations...');
-
+        const { operations } = this.config;
+        let operationToExecute;
         for (const operation of operations) {
-            switch (true) {
-                case (
-                    operation instanceof CopyFilesOperation
-                || operation instanceof DeleteFolderOperation
-                ): break;
+            const { type } = operation;
+            switch (type) {
+                case OPERATIONS_TYPES.FILES_COPY: {
+                    const { source, destination: inputDestination } = operation;
+                    const destination = new Folder(inputDestination);
+                    operationToExecute = new CopyFilesOperation({ source, destination });
+                    break;
+                }
+                case OPERATIONS_TYPES.FOLDERS_DELETE: {
+                    const { folder: opFolder } = operation;
+                    const folder = new Folder(opFolder);
+                    operationToExecute = new DeleteFolderOperation({ folder });
+                    break;
+                }
 
                 default: {
-                    throw new Error(`DriveService.execute(): The operation type "${operation}" is not recognized!`);
+                    throw new Error(`DriveService.execute(): Unknown operation type "${operation}"!`);
                 }
             }
-            await operation.execute(this);
+            await operationToExecute.execute(this);
         }
     }
 
@@ -210,10 +334,13 @@ class DriveService {
                 });
             } else {
                 const searchFolders = await this.listFolders({
-                    extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents` });
+                    extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents`,
+                });
 
 
-                searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
+                const { name } = folderEl;
+                const { id } = currentFolder;
+                searchedFolder = searchFolders.find(f => f.name === name && f.parents[0] === id);
             }
             if (!searchedFolder) {
                 result.folderId = null;
@@ -234,7 +361,9 @@ class DriveService {
             const result = await this._drive.files.delete({
                 fileId: folderId,
             });
-            if (result.code === 404 && result.message.includes('File not found')) console.log(`Couldn't delete folder with id "${folderId}" because it doesn't exist`);
+            if (result.code === 404 && result.message.includes('File not found')) {
+                console.log(`Couldn't delete folder with id "${folderId}" because it doesn't exist`);
+            }
         } catch (e) {
             if (e.message.includes(DRIVE_ERROR_MESSAGES.insufficientPermissions)) {
                 throw new Error(`${DRIVE_ERROR_MESSAGES.insufficientPermissions} (id="${folderId}")`);
@@ -260,7 +389,7 @@ class DriveService {
         let currentFolder;
 
         for (const folderEl of folders) {
-            const settings = {
+            const params = {
                 resource: {
                     name: folderEl.name,
                     mimeType: 'application/vnd.google-apps.folder',
@@ -268,6 +397,7 @@ class DriveService {
             let searchedFolder;
             if (folderEl.root) {
                 const searchFolders = await this.listFolders({
+                    root: !folderEl.id,
                     extraQ: `name='${folderEl.name}'`,
                 });
                 searchedFolder = searchFolders.find((f) => {
@@ -278,11 +408,13 @@ class DriveService {
                 const searchFolders = await this.listFolders({
                     extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents` });
 
-                searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
+                const { name } = folderEl;
+                const { id } = currentFolder;
+                searchedFolder = searchFolders.find(f => f.name === name && f.parents[0] === id);
             }
             if (!searchedFolder) {
-                settings.resource.parents = [currentFolder.id];
-                ({ data: currentFolder } = await this.createFile(settings));
+                if (currentFolder) params.resource.parents = [currentFolder.id];
+                ({ data: currentFolder } = await this.createFile(params));
             } else {
                 currentFolder = searchedFolder;
             }
@@ -296,8 +428,10 @@ class DriveService {
     }
 
     checkFolderOrThrow(folder) {
-        if (!folder || !(folder instanceof Folder)) throw new Error(`Parameter "folder" must be an instance of Folder! provided value was ${JSON.stringify(folder)}`);
+        if (!folder || !(folder instanceof Folder)) {
+            throw new Error(`Parameter "folder" must be an instance of Folder! provided value was ${JSON.stringify(folder)}`);
+        }
     }
 }
 
-module.exports = DriveService;
+module.exports = Service;

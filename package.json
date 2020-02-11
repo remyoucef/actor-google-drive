@@ -1,21 +1,22 @@
 {
-	"name": "actor-google-drive",
-	"version": "0.0.1",
-	"description": "This is a boilerplate of an Apify actor.",
-	"dependencies": {
-		"apify": "^0.15.2",
-		"apify-google-auth": "^0.1.7",
-		"googleapis": "^43.0.0",
-		"type-check": "^0.3.2"
-	},
-	"devDependencies": {
-		"@apify/eslint-config": "0.0.3",
-		"eslint": "^6.4.0"
-	},
-	"scripts": {
-		"start": "node src/main.js",
-		"test": "echo \"Error: oops, the actor has no tests yet, sad!\" && exit 1"
-	},
-	"author": "It's not you it's me",
-	"license": "ISC"
+  "name": "actor-google-drive",
+  "version": "0.0.1",
+  "description": "This is a boilerplate of an Apify actor.",
+  "dependencies": {
+    "apify": "^0.15.2",
+    "apify-google-auth": "^0.3.0",
+    "googleapis": "^43.0.0",
+    "type-check": "^0.3.2"
+  },
+  "devDependencies": {
+    "@apify/eslint-config": "0.0.3",
+    "eslint": "^6.4.0"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "apify:debug": "APIFY_LOG_LEVEL=DEBUG apify run",
+    "apify:debug:purge": "APIFY_LOG_LEVEL=DEBUG apify run -p"
+  },
+  "author": "It's not you it's me",
+  "license": "ISC"
 }
