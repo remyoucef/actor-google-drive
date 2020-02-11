@@ -1,27 +1,25 @@
 const Apify = require('apify');
-const DriveService = require('./service');
-const parseInput = require('./input');
-
-function throwIfTimeout(timeoutSecs) {
-    return new Promise(resolve => setTimeout(resolve, timeoutSecs * 1000))
-        .then(() => {
-            throw new Error(`Actor didn't finish in required time (${timeoutSecs}).`);
-        });
-}
+const Config = require('./Config');
+const Service = require('./Service');
+const { throwIfTimeout } = require('./utils');
 
 Apify.main(async () => {
     const input = await Apify.getInput();
     console.log('Input:');
-    console.dir(input);
+    console.dir(input, { depth: 8 });
 
-    const { isSetupMode, operations, timeoutSecs } = parseInput(input);
 
-    const driveService = new DriveService();
-    await driveService.init();
+    const config = new Config(input);
+
+    const service = new Service(config);
+    await service.init();
+
+    const { isSetupMode, timeoutSecs } = config;
     if (!isSetupMode) {
         await Promise.race([
-            driveService.execute(operations),
+            service.execute(),
             throwIfTimeout(timeoutSecs),
         ]);
     }
+    console.log('Actor finish');
 });

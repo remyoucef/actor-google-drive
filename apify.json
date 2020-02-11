@@ -1,7 +1,9 @@
 {
-	"name": "google-drive",
-	"version": "0.0",
-	"buildTag": "latest",
-	"env": null,
-	"template": "puppeteer_single_page"
+  "name": "google-drive",
+  "version": "0.0",
+  "buildTag": "latest",
+  "env": {
+    "GOOGLE_APIS_CLIENT_SECRET": "@googleDriveGoogleApisClientSecret"
+  },
+  "template": "puppeteer_single_page"
 }

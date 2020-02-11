@@ -1,29 +1,33 @@
 const { apifyGoogleAuth } = require('apify-google-auth');
 const { google } = require('googleapis');
+const { OPERATIONS_TYPES } = require('./consts');
 const { CopyFilesOperation, DeleteFolderOperation } = require('./operations/index');
 const { Folder } = require('./operations/helper');
 
 const DRIVE_ERROR_MESSAGES = {
     insufficientPermissions: 'The user does not have sufficient permissions for this file',
 };
-class DriveService {
-    async init(params = {}) {
+class Service {
+    /**
+     * @param {Config} config
+     */
+    constructor(config) {
+        this.config = config;
+    }
+
+    async init() {
         console.log('Initializing drive service...');
 
-        const { tokensStore = 'google-auth-tokens' } = params;
+        const { tokensStore, googleApisCredentials } = this.config;
 
-        /**
-         * auth An authorized OAuth2 client.
-         * @type {google.auth.OAuth2}
-         * @private
-         */
         this._auth = await apifyGoogleAuth({
             scope: 'drive',
             tokensStore,
+            credentials: googleApisCredentials,
         });
         /**
          * drive api endpoint.
-         * @type {drive_v3.Drive}
+         * @type {v3.Drive}
          * @private
          */
         this._drive = google.drive({ version: 'v3', auth: this._auth });
@@ -126,12 +130,10 @@ class DriveService {
         if (extraQ === '') extraQ = 'mimeType != \'application/vnd.google-apps.folder\'';
 
         if (!extraQ.includes('mimeType')) extraQ += ' and mimeType != \'application/vnd.google-apps.folder\'';
-        const files = await this.listFiles({
+        return this.listFiles({
             ...params,
             extraQ,
         });
-
-        return files;
     }
 
     /**
@@ -231,11 +233,6 @@ class DriveService {
         return qArr.join(' and ');
     }
 
-    /**
-     *
-     * @param {Object} params
-     * @return {GaxiosPromise<Schema$File>}
-     */
     async createOrUpdateFile(params) {
         const searchFiles = await this.getFileData({ ...params });
 
@@ -254,12 +251,16 @@ class DriveService {
             extraQ += ` and (${parents.map(p => `'${p}' in parents`)
                 .join(' or ')})`;
         }
-        const searchFiles = await this.listFilesWithoutFolders({ ...params, extraQ });
-        return searchFiles;
+        return this.listFilesWithoutFolders({
+            ...params,
+            extraQ,
+        });
     }
 
     async copyFile(file, parentFolderId, filesProvider) {
-        if (typeof file !== 'object') throw new Error(`DriveService.copyFile(): Parameter "file" must be of type object, provided value was "${file}"`);
+        if (typeof file !== 'object') {
+            throw new Error(`DriveService.copyFile(): Parameter "file" must be of type object, provided value was "${file}"`);
+        }
         const name = filesProvider.getFileName(file.key);
         console.log(`Copying file ${name}...`);
 
@@ -274,25 +275,34 @@ class DriveService {
                 body: await filesProvider.getFileStream(file.key),
             },
         };
-        const copiedFile = await this.createOrUpdateFile(params);
-        return copiedFile;
+        return this.createOrUpdateFile(params);
     }
 
-    async execute(operations) {
+    async execute() {
         console.log('Executing operations...');
-
+        const { operations } = this.config;
+        let operationToExecute;
         for (const operation of operations) {
-            switch (true) {
-                case (
-                    operation instanceof CopyFilesOperation
-                || operation instanceof DeleteFolderOperation
-                ): break;
+            const { type } = operation;
+            switch (type) {
+                case OPERATIONS_TYPES.FILES_COPY: {
+                    const { source, destination: inputDestination } = operation;
+                    const destination = new Folder(inputDestination);
+                    operationToExecute = new CopyFilesOperation({ source, destination });
+                    break;
+                }
+                case OPERATIONS_TYPES.FOLDERS_DELETE: {
+                    const { folder: opFolder } = operation;
+                    const folder = new Folder(opFolder);
+                    operationToExecute = new DeleteFolderOperation({ folder });
+                    break;
+                }
 
                 default: {
-                    throw new Error(`DriveService.execute(): The operation type "${operation}" is not recognized!`);
+                    throw new Error(`DriveService.execute(): Unknown operation type "${operation}"!`);
                 }
             }
-            await operation.execute(this);
+            await operationToExecute.execute(this);
         }
     }
 
@@ -324,10 +334,13 @@ class DriveService {
                 });
             } else {
                 const searchFolders = await this.listFolders({
-                    extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents` });
+                    extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents`,
+                });
 
 
-                searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
+                const { name } = folderEl;
+                const { id } = currentFolder;
+                searchedFolder = searchFolders.find(f => f.name === name && f.parents[0] === id);
             }
             if (!searchedFolder) {
                 result.folderId = null;
@@ -348,7 +361,9 @@ class DriveService {
             const result = await this._drive.files.delete({
                 fileId: folderId,
             });
-            if (result.code === 404 && result.message.includes('File not found')) console.log(`Couldn't delete folder with id "${folderId}" because it doesn't exist`);
+            if (result.code === 404 && result.message.includes('File not found')) {
+                console.log(`Couldn't delete folder with id "${folderId}" because it doesn't exist`);
+            }
         } catch (e) {
             if (e.message.includes(DRIVE_ERROR_MESSAGES.insufficientPermissions)) {
                 throw new Error(`${DRIVE_ERROR_MESSAGES.insufficientPermissions} (id="${folderId}")`);
@@ -393,7 +408,9 @@ class DriveService {
                 const searchFolders = await this.listFolders({
                     extraQ: `name = '${folderEl.name}' and '${currentFolder.id}' in parents` });
 
-                searchedFolder = searchFolders.find(f => f.name === folderEl.name && f.parents[0] === currentFolder.id);
+                const { name } = folderEl;
+                const { id } = currentFolder;
+                searchedFolder = searchFolders.find(f => f.name === name && f.parents[0] === id);
             }
             if (!searchedFolder) {
                 if (currentFolder) params.resource.parents = [currentFolder.id];
@@ -411,8 +428,10 @@ class DriveService {
     }
 
     checkFolderOrThrow(folder) {
-        if (!folder || !(folder instanceof Folder)) throw new Error(`Parameter "folder" must be an instance of Folder! provided value was ${JSON.stringify(folder)}`);
+        if (!folder || !(folder instanceof Folder)) {
+            throw new Error(`Parameter "folder" must be an instance of Folder! provided value was ${JSON.stringify(folder)}`);
+        }
     }
 }
 
-module.exports = DriveService;
+module.exports = Service;
