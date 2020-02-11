@@ -10,12 +10,15 @@
   },
   "devDependencies": {
     "@apify/eslint-config": "0.0.3",
+    "apify-cli": "^0.5.2",
+    "apify-shared": "^0.2.6",
     "eslint": "^6.4.0"
   },
   "scripts": {
     "start": "node src/main.js",
     "apify:debug": "APIFY_LOG_LEVEL=DEBUG apify run",
-    "apify:debug:purge": "APIFY_LOG_LEVEL=DEBUG apify run -p"
+    "apify:debug:purge": "APIFY_LOG_LEVEL=DEBUG apify run -p",
+    "test:apify-platform:prepare": "node test/apify-platform/prepare.js"
   },
   "author": "It's not you it's me",
   "license": "ISC"

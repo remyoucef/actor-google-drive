@@ -6,7 +6,7 @@ const { throwIfTimeout } = require('./utils');
 Apify.main(async () => {
     const input = await Apify.getInput();
     console.log('Input:');
-    console.dir(input, { depth: 6 });
+    console.dir(input, { depth: 8 });
 
 
     const config = new Config(input);
@@ -21,4 +21,5 @@ Apify.main(async () => {
             throwIfTimeout(timeoutSecs),
         ]);
     }
+    console.log('Actor finish');
 });
