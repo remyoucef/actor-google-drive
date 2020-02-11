@@ -10,10 +10,9 @@ class Folder {
 
     validate(params) {
         if (!typeCheck('Object', params)) {
-            throw new Error(`Folder: Parameter "params" must be of type string or object, provided value was ${JSON.stringify(params)}`);
+            throw new Error(`Folder: Parameter "params" must be of type object, provided value was ${JSON.stringify(params)}`);
         }
-        if (!typeCheck('String', params.parentFolderId)
-            || !typeCheck('String', params.parentFolderName)) {
+        if (!typeCheck('String', params.parentFolderId) && !typeCheck('String', params.parentFolderName)) {
             throw new Error('Folder: Parameter "params" must have at least one this fields: "parentFolderId", "parentFolderName".');
         }
         if (params.relativePath && !typeCheck('Maybe String', params.relativePath)) {
@@ -50,12 +49,14 @@ class Folder {
         return folderAsString;
     }
 
-    static make({ folder, constants }) {
+    static validateAndParse({ folder, constants }) {
         let folderParams = folder;
 
-        if (typeCheck('String', folderParams) && folderParams.includes('constants.')) folderParams = constants[folderParams.split('.')[1]];
+        if (typeCheck('String', folderParams) && folderParams.includes('constants.')) {
+            folderParams = constants[folderParams.split('.')[1]];
+        }
 
-        return new Folder(folderParams);
+        return folderParams;
     }
 }
 

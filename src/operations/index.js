@@ -1,12 +1,8 @@
 const Apify = require('apify');
 
+const { OPERATIONS_TYPES } = require('../consts');
 const { bufferToStream } = require('../utils');
 const { Folder } = require('../operations/helper');
-
-const OPERATIONS_TYPES = {
-    FILES_COPY: 'files-copy',
-    FOLDERS_DELETE: 'folders-delete',
-};
 
 class KeyValueStoreFilesProvider {
     constructor(id, forceCloud, files) {
@@ -14,6 +10,7 @@ class KeyValueStoreFilesProvider {
         this.forceCloud = false;
         this.files = files;
         this.kvStore = null;
+        this.initPromise = this.init();
     }
 
     async init() {
@@ -22,7 +19,7 @@ class KeyValueStoreFilesProvider {
     }
 
     async getFileStream(key) {
-        await this.init();
+        await this.initPromise;
         const buffer = await this.kvStore.getValue(key);
         return bufferToStream(buffer);
     }
@@ -42,9 +39,16 @@ class KeyValueStoreFilesProvider {
 }
 
 class CopyFilesOperation {
+    /**
+     *
+     * @param {string} source
+     * @param {Folder} destination
+     */
     constructor({ source, destination }) {
         // TODO: Validate parameters
-        if (!destination || !(destination instanceof Folder)) throw new Error('Parameter "destination" must be of type Folder');
+        if (!destination || !(destination instanceof Folder)) {
+            throw new Error('Parameter "destination" must be of type Folder');
+        }
 
         this.source = source;
         this.destination = destination;
